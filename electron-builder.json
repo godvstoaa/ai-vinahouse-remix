@@ -1,0 +1,89 @@
+{
+    "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+    "appId": "com.airemix.vinahouse",
+    "productName": "AI Vinahouse Remix",
+    "copyright": "Copyright © 2026 AI Remix Studio",
+    "directories": {
+        "output": "release",
+        "buildResources": "build"
+    },
+    "files": [
+        "dist/**/*",
+        "backend/**/*",
+        "!backend/__pycache__/**/*",
+        "!backend/**/*.pyc",
+        "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+        "!**/node_modules/.bin",
+        "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}"
+    ],
+    "extraResources": [
+        {
+            "from": "backend",
+            "to": "backend",
+            "filter": [
+                "**/*",
+                "!**/__pycache__/**/*",
+                "!**/*.pyc"
+            ]
+        },
+        {
+            "from": "pretrained",
+            "to": "pretrained",
+            "filter": [
+                "**/*.pt",
+                "**/*.pth",
+                "**/*.bin",
+                "**/*.safetensors"
+            ]
+        }
+    ],
+    "mac": {
+        "category": "public.app-category.music",
+        "icon": "build/icon.icns",
+        "target": [
+            {
+                "target": "dmg",
+                "arch": [
+                    "x64",
+                    "arm64"
+                ]
+            },
+            {
+                "target": "zip",
+                "arch": [
+                    "x64",
+                    "arm64"
+                ]
+            }
+        ],
+        "artifactName": "${productName}-${version}-${arch}.${ext}",
+        "hardenedRuntime": true,
+        "gatekeeperAssess": false,
+        "entitlements": "build/entitlements.mac.plist",
+        "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+        "minimumSystemVersion": "10.13.0"
+    },
+    "dmg": {
+        "contents": [
+            {
+                "x": 130,
+                "y": 220
+            },
+            {
+                "x": 410,
+                "y": 220,
+                "type": "link",
+                "path": "/Applications"
+            }
+        ],
+        "window": {
+            "width": 540,
+            "height": 380
+        }
+    },
+    "publish": {
+        "provider": "github",
+        "owner": "ai-remix-studio",
+        "repo": "vinahouse-remix"
+    }
+}

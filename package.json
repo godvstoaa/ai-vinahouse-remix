@@ -1,0 +1,62 @@
+{
+    "name": "ai-vinahouse-remix",
+    "version": "1.0.0",
+    "description": "AI Vinahouse Remix Pro - Công nghệ Deep Learning 2026",
+    "main": "electron/main.js",
+    "author": "AI Remix Studio",
+    "license": "MIT",
+    "scripts": {
+        "dev": "vite",
+        "build": "tsc && vite build",
+        "preview": "vite preview",
+        "server": "cd backend && python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000",
+        "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
+        "electron:build": "npm run build && electron-builder --mac",
+        "electron:build:mac": "npm run build && electron-builder --mac --config electron-builder.json",
+        "electron:build:mac-arm": "npm run build && electron-builder --mac --arm64 --config electron-builder.json",
+        "electron:build:mac-x64": "npm run build && electron-builder --mac --x64 --config electron-builder.json",
+        "electron:build:dmg": "npm run build && electron-builder --mac dmg --config electron-builder.json",
+        "electron:build:zip": "npm run build && electron-builder --mac zip --config electron-builder.json",
+        "dist": "npm run build && electron-builder --config electron-builder.json"
+    },
+    "dependencies": {
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "wavesurfer.js": "^7.7.3",
+        "axios": "^1.6.2",
+        "framer-motion": "^10.16.16",
+        "lucide-react": "^0.303.0",
+        "zustand": "^4.4.7",
+        "tailwindcss": "^3.4.0",
+        "postcss": "^8.4.32",
+        "autoprefixer": "^10.4.16"
+    },
+    "devDependencies": {
+        "@types/react": "^18.2.43",
+        "@types/react-dom": "^18.2.17",
+        "@vitejs/plugin-react": "^4.2.1",
+        "typescript": "^5.3.3",
+        "vite": "^5.0.8",
+        "electron": "^28.0.0",
+        "electron-builder": "^24.9.1",
+        "electron-updater": "^6.1.7",
+        "electron-log": "^5.0.1",
+        "concurrently": "^8.2.2",
+        "wait-on": "^7.2.0"
+    },
+    "build": {
+        "extends": null,
+        "appId": "com.airemix.vinahouse",
+        "productName": "AI Vinahouse Remix",
+        "directories": {
+            "output": "release"
+        },
+        "mac": {
+            "category": "public.app-category.music",
+            "target": [
+                "dmg",
+                "zip"
+            ]
+        }
+    }
+}

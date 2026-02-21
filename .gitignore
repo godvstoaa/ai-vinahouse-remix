@@ -1,0 +1,25 @@
+﻿node_modules/
+dist/
+release/
+
+# Python
+backend/venv/
+backend/__pycache__/
+backend/**/*.pyc
+
+# Runtime / generated folders
+uploads/
+outputs/
+pretrained/
+stems/
+remixes/
+processed/
+
+# Env / secrets
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
