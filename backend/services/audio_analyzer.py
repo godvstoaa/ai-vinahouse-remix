@@ -1,307 +1,327 @@
 """
-Real Audio Analyzer using Librosa
-Analyzes BPM, Key, Energy, and other features
+Professional Audio Analysis using Madmom + Essentia
+Advanced BPM detection, Key detection, and structural analysis
 """
-import librosa
 import numpy as np
-from typing import Dict, Any, Optional
+import librosa
 import logging
+from typing import Dict, Any, Optional, Tuple, List
+import os
 
 logger = logging.getLogger(__name__)
 
-class AudioAnalyzer:
-    """Real audio analysis using librosa"""
+# Try importing advanced libraries
+try:
+    import madmom
+    from madmom.features.beats import RNNBeatProcessor, DBNBeatTrackingProcessor
+    from madmom.features.onsets import OnsetPeakPickingProcessor
+    HAS_MADMOM = True
+    logger.info("Madmom loaded - Advanced beat detection enabled!")
+except ImportError:
+    HAS_MADMOM = False
+    logger.warning("Madmom not installed - using librosa fallback")
+
+try:
+    import essentia
+    import essentia.standard as es
+    HAS_ESSENTIA = True
+    logger.info("Essentia loaded - Professional music analysis enabled!")
+except ImportError:
+    HAS_ESSENTIA = False
+    logger.warning("Essentia not installed - using librosa fallback")
+
+
+class ProfessionalAudioAnalyzer:
+    """
+    Professional audio analysis combining Madmom, Essentia, and Librosa.
     
-    # Musical key mapping
-    KEY_MAP = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
-    MODE_MAP = {0: 'minor', 1: 'major'}
+    Features:
+    - Accurate BPM detection using Madmom RNN
+    - Key detection using Essentia
+    - Structural analysis (verse, chorus, drop)
+    - Energy profiling
+    - Danceability scoring
+    """
     
-    # Genre mapping based on tempo and features
-    GENRE_FEATURES = {
-        'edm': {'tempo_range': (120, 150), 'energy': 'high', 'beat_strength': 'strong'},
-        'house': {'tempo_range': (115, 135), 'energy': 'high', 'beat_strength': 'strong'},
-        'hiphop': {'tempo_range': (80, 115), 'energy': 'medium', 'beat_strength': 'strong'},
-        'pop': {'tempo_range': (100, 130), 'energy': 'medium', 'beat_strength': 'medium'},
-        'trap': {'tempo_range': (130, 180), 'energy': 'high', 'beat_strength': 'strong'},
-        'lofi': {'tempo_range': (60, 90), 'energy': 'low', 'beat_strength': 'soft'},
-        'techno': {'tempo_range': (120, 150), 'energy': 'high', 'beat_strength': 'strong'},
-        'dubstep': {'tempo_range': (135, 145), 'energy': 'high', 'beat_strength': 'strong'},
-        'r&b': {'tempo_range': (70, 110), 'energy': 'low', 'beat_strength': 'medium'},
-        'rock': {'tempo_range': (90, 140), 'energy': 'high', 'beat_strength': 'strong'},
-    }
-    
-    def __init__(self):
-        self.sample_rate = 22050
-    
-    async def analyze(self, audio_path: str) -> Dict[str, Any]:
-        """
-        Full audio analysis
+    def __init__(self, sample_rate: int = 44100):
+        self.sample_rate = sample_rate
+        self.has_madmom = HAS_MADMOM
+        self.has_essentia = HAS_ESSENTIA
         
-        Args:
-            audio_path: Path to audio file
-            
+    def analyze(self, audio_path: str) -> Dict[str, Any]:
+        """
+        Full analysis of audio file.
+        
         Returns:
-            Dictionary with analysis results
+            Dict with bpm, key, energy, sections, etc.
         """
-        try:
-            logger.info(f"Analyzing audio: {audio_path}")
-            
-            # Load audio
-            y, sr = librosa.load(audio_path, sr=self.sample_rate)
-            duration = librosa.get_duration(y=y, sr=sr)
-            
-            # Get duration in 30-second segments for faster analysis
-            segment_duration = 30  # seconds
-            if duration > segment_duration:
-                # Analyze first 30 seconds for quick results
-                segment_samples = int(segment_duration * sr)
-                y_analysis = y[:segment_samples]
-            else:
-                y_analysis = y
-            
-            # Run all analyses
-            results = {
-                'duration': float(duration),
-                'sample_rate': int(sr),
-                'bpm': await self._analyze_bpm(y_analysis, sr),
-                'key': await self._analyze_key(y_analysis, sr),
-                'energy': await self._analyze_energy(y_analysis),
-                'danceability': await self._analyze_danceability(y_analysis, sr),
-                'sections': await self._analyze_sections(y, sr),
-                'spectral_features': await self._analyze_spectral(y_analysis, sr),
-            }
-            
-            # Predict genre based on features
-            results['predicted_genre'] = self._predict_genre(results)
-            
-            logger.info(f"Analysis complete: BPM={results['bpm']}, Key={results['key']}")
-            return results
-            
-        except Exception as e:
-            logger.error(f"Analysis failed: {e}")
-            raise
-    
-    async def _analyze_bpm(self, y: np.ndarray, sr: int) -> float:
-        """Analyze tempo/BPM using librosa"""
-        try:
-            # Use librosa's beat tracking
-            tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sr)
-            
-            # Handle array output
-            if isinstance(tempo, np.ndarray):
-                tempo = float(tempo[0]) if len(tempo) > 0 else 120.0
-            else:
-                tempo = float(tempo)
-            
-            # Round to common BPM values
-            bpm = round(tempo, 1)
-            
-            # Validate range
-            if bpm < 60:
-                bpm *= 2  # Double if too slow
-            elif bpm > 200:
-                bpm /= 2  # Half if too fast
-                
-            return round(bpm, 1)
-            
-        except Exception as e:
-            logger.warning(f"BPM analysis failed: {e}")
-            return 120.0
-    
-    async def _analyze_key(self, y: np.ndarray, sr: int) -> str:
-        """Analyze musical key using Krumhansl-Schmuckler algorithm"""
-        try:
-            # Get chromagram
-            chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
-            
-            # Average chroma
-            chroma_mean = np.mean(chroma, axis=1)
-            
-            # Krumhansl-Schmuckler major key profile
-            major_profile = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 
-                                      2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
-            
-            # Krumhansl-Schmuckler minor key profile  
-            minor_profile = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53,
-                                      2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
-            
-            # Calculate correlations for all keys
-            major_correlations = []
-            minor_correlations = []
-            
-            for i in range(12):
-                # Rotate profile
-                major_rotated = np.roll(major_profile, i)
-                minor_rotated = np.roll(minor_profile, i)
-                
-                # Correlation
-                major_corr = np.corrcoef(chroma_mean, major_rotated)[0, 1]
-                minor_corr = np.corrcoef(chroma_mean, minor_rotated)[0, 1]
-                
-                major_correlations.append(major_corr)
-                minor_correlations.append(minor_corr)
-            
-            # Find best match
-            major_best_idx = np.argmax(major_correlations)
-            minor_best_idx = np.argmax(minor_correlations)
-            
-            if major_correlations[major_best_idx] > minor_correlations[minor_best_idx]:
-                return f"{self.KEY_MAP[major_best_idx]} major"
-            else:
-                return f"{self.KEY_MAP[minor_best_idx]} minor"
-                
-        except Exception as e:
-            logger.warning(f"Key analysis failed: {e}")
-            return "C major"
-    
-    async def _analyze_energy(self, y: np.ndarray) -> Dict[str, float]:
-        """Analyze energy/intensity of audio"""
-        try:
-            # RMS energy
-            rms = librosa.feature.rms(y=y)
-            rms_mean = float(np.mean(rms))
-            rms_std = float(np.std(rms))
-            
-            # Spectral centroid (brightness)
-            centroid = librosa.feature.spectral_centroid(y=y)
-            centroid_mean = float(np.mean(centroid))
-            
-            # Dynamic range
-            dynamic_range = float(np.max(y) - np.min(y))
-            
-            # Normalize energy to 0-1 scale
-            # RMS typically 0-0.5 for most music
-            energy_score = min(1.0, rms_mean * 3)
-            
-            return {
-                'score': round(energy_score, 2),
-                'rms': round(rms_mean, 4),
-                'rms_variance': round(rms_std, 4),
-                'brightness': round(centroid_mean / 10000, 2),  # Normalized
-                'dynamic_range': round(dynamic_range, 2)
-            }
-            
-        except Exception as e:
-            logger.warning(f"Energy analysis failed: {e}")
-            return {'score': 0.5, 'rms': 0.1, 'brightness': 0.5}
-    
-    async def _analyze_danceability(self, y: np.ndarray, sr: int) -> float:
-        """Analyze danceability based on rhythm features"""
-        try:
-            # Get tempo
-            tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-            if isinstance(tempo, np.ndarray):
-                tempo = float(tempo[0])
-            
-            # Get onset strength
-            onset_env = librosa.onset.onset_strength(y=y, sr=sr)
-            onset_variance = np.std(onset_env)
-            
-            # Get beat pluse
-            beat_frames = librosa.beat.beat_track(y=y, sr=sr)[1]
-            beat_variance = np.var(beat_frames) if len(beat_frames) > 1 else 0
-            
-            # Danceability heuristics
-            # Optimal dance tempo: 100-130 BPM
-            tempo_score = 1.0 - min(1.0, abs(tempo - 115) / 50)
-            
-            # Strong beat = more danceable
-            beat_score = min(1.0, onset_variance * 10)
-            
-            # Regular rhythm = more danceable
-            regularity_score = max(0, 1.0 - beat_variance / 1000)
-            
-            danceability = (tempo_score * 0.4 + beat_score * 0.4 + regularity_score * 0.2)
-            
-            return round(danceability, 2)
-            
-        except Exception as e:
-            logger.warning(f"Danceability analysis failed: {e}")
-            return 0.5
-    
-    async def _analyze_sections(self, y: np.ndarray, sr: int) -> list:
-        """Analyze song structure/sections"""
-        try:
-            # Get segment boundaries using spectral contrast
-            boundaries = librosa.segment.agglomerative(y, k=10)
-            
-            # Convert to time
-            times = librosa.frames_to_time(boundaries, sr=sr)
-            
-            sections = []
-            for i, time in enumerate(times):
-                sections.append({
-                    'start': float(time),
-                    'section': i + 1
-                })
-            
-            return sections
-            
-        except Exception as e:
-            logger.warning(f"Section analysis failed: {e}")
-            return []
-    
-    async def _analyze_spectral(self, y: np.ndarray, sr: int) -> Dict[str, float]:
-        """Analyze spectral features"""
-        try:
-            # Spectral bandwidth
-            bandwidth = librosa.feature.spectral_bandwidth(y=y, sr=sr)
-            
-            # Spectral rolloff
-            rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr)
-            
-            # Zero crossing rate
-            zcr = librosa.feature.zero_crossing_rate(y)
-            
-            # Spectral flatness
-            flatness = librosa.feature.spectral_flatness(y=y)
-            
-            return {
-                'bandwidth_mean': round(float(np.mean(bandwidth)), 2),
-                'rolloff_mean': round(float(np.mean(rolloff)), 2),
-                'zcr_mean': round(float(np.mean(zcr)), 4),
-                'flatness_mean': round(float(np.mean(flatness)), 4)
-            }
-            
-        except Exception as e:
-            logger.warning(f"Spectral analysis failed: {e}")
-            return {}
-    
-    def _predict_genre(self, features: Dict) -> str:
-        """Predict genre based on audio features"""
-        bpm = features.get('bpm', 120)
-        energy = features.get('energy', {}).get('score', 0.5)
+        logger.info(f"Analyzing: {audio_path}")
         
-        best_genre = 'pop'
-        best_score = 0
+        # Load audio
+        y, sr = librosa.load(audio_path, sr=self.sample_rate, mono=True)
+        duration = len(y) / sr
         
-        for genre, genre_features in self.GENRE_FEATURES.items():
-            score = 0
+        # Core analysis
+        bpm = self._detect_bpm(y, sr, audio_path)
+        key = self._detect_key(y, sr, audio_path)
+        energy, energy_profile = self._analyze_energy(y, sr)
+        sections = self._detect_sections(y, sr, bpm)
+        danceability = self._calculate_danceability(y, sr, bpm)
+        spectral = self._analyze_spectral(y, sr)
+        
+        return {
+            "duration": duration,
+            "bpm": bpm,
+            "key": key,
+            "energy": energy,
+            "energy_profile": energy_profile,
+            "danceability": danceability,
+            "sections": sections,
+            "spectral": spectral,
+            "drop_ready": energy > 0.4 and danceability > 0.5,
+            "genre_hint": self._guess_genre(bpm, energy, spectral)
+        }
+    
+    def _detect_bpm(self, y: np.ndarray, sr: int, audio_path: str = None) -> float:
+        """
+        Detect BPM using Madmom RNN (most accurate) or Librosa fallback.
+        """
+        if self.has_madmom and audio_path:
+            try:
+                # Madmom RNN-based beat detection (state-of-the-art)
+                proc = RNNBeatProcessor()
+                beats = proc(audio_path)
+                tracker = DBNBeatTrackingProcessor(fps=100)
+                beat_times = tracker(beats)
+                
+                if len(beat_times) > 1:
+                    # Calculate BPM from beat intervals
+                    intervals = np.diff(beat_times)
+                    avg_interval = np.median(intervals)
+                    bpm = 60.0 / avg_interval
+                    
+                    # Clamp to reasonable range
+                    bpm = max(60, min(200, bpm))
+                    logger.info(f"Madmom BPM: {bpm:.1f}")
+                    return round(bpm, 1)
+            except Exception as e:
+                logger.warning(f"Madmom BPM failed: {e}")
+        
+        # Librosa fallback
+        tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+        if isinstance(tempo, np.ndarray):
+            tempo = float(tempo[0])
+        return round(float(tempo), 1)
+    
+    def _detect_key(self, y: np.ndarray, sr: int, audio_path: str = None) -> str:
+        """
+        Detect musical key using Essentia (most accurate) or Librosa fallback.
+        """
+        if self.has_essentia:
+            try:
+                # Essentia key detection
+                key_extractor = es.KeyExtractor()
+                key, scale, strength = key_extractor(y)
+                
+                # Format: "C major", "A minor", etc.
+                result = f"{key} {scale}"
+                logger.info(f"Essentia Key: {result} (strength: {strength:.2f})")
+                return result
+            except Exception as e:
+                logger.warning(f"Essentia key detection failed: {e}")
+        
+        # Librosa fallback using chroma
+        chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
+        chroma_mean = np.mean(chroma, axis=1)
+        
+        key_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+        major_idx = np.argmax(chroma_mean)
+        
+        # Simple major/minor detection
+        minor_idx = (major_idx + 9) % 12  # Relative minor
+        if chroma_mean[minor_idx] > chroma_mean[major_idx] * 0.9:
+            return f"{key_names[minor_idx]} minor"
+        return f"{key_names[major_idx]} major"
+    
+    def _analyze_energy(self, y: np.ndarray, sr: int) -> Tuple[float, List[Dict]]:
+        """
+        Analyze energy level and create energy profile over time.
+        """
+        # RMS energy
+        rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=512)[0]
+        
+        # Normalize
+        rms_normalized = rms / (np.max(rms) + 1e-10)
+        overall_energy = float(np.mean(rms_normalized))
+        
+        # Create profile (energy per second)
+        seconds = len(y) // sr
+        samples_per_second = sr // 512  # hop_length samples per frame
+        
+        energy_profile = []
+        for sec in range(seconds):
+            start = sec * samples_per_second
+            end = min((sec + 1) * samples_per_second, len(rms_normalized))
+            energy_profile.append({
+                "second": sec,
+                "energy": float(np.mean(rms_normalized[start:end]))
+            })
+        
+        return overall_energy, energy_profile
+    
+    def _detect_sections(self, y: np.ndarray, sr: int, bpm: float) -> List[Dict]:
+        """
+        Detect song sections (intro, verse, chorus, drop, etc.)
+        """
+        # Use novelty curve for section boundaries
+        onset_env = librosa.onset.onset_strength(y=y, sr=sr)
+        
+        # Find boundary points using spectral contrast
+        bounds = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr, units='time')
+        
+        # Group into 8-bar sections (32 beats)
+        beat_duration = 60 / bpm
+        section_duration = 32 * beat_duration
+        total_duration = len(y) / sr
+        
+        sections = []
+        num_sections = max(1, int(total_duration / section_duration))
+        
+        section_types = self._classify_sections(len(y) / sr, bpm, onset_env)
+        
+        for i in range(num_sections):
+            start = i * section_duration
+            end = min((i + 1) * section_duration, total_duration)
             
-            # Tempo matching
-            tempo_range = genre_features['tempo_range']
-            if tempo_range[0] <= bpm <= tempo_range[1]:
-                score += 0.5
+            # Get energy for this section
+            start_sample = int(start * sr)
+            end_sample = int(end * sr)
+            section_energy = np.sqrt(np.mean(y[start_sample:end_sample]**2))
+            
+            section_type = section_types[i] if i < len(section_types) else "verse"
+            
+            sections.append({
+                "type": section_type,
+                "start": round(start, 2),
+                "end": round(end, 2),
+                "duration": round(end - start, 2),
+                "energy": float(section_energy)
+            })
+        
+        return sections
+    
+    def _classify_sections(self, duration: float, bpm: float, onset_env: np.ndarray) -> List[str]:
+        """Classify section types based on position and energy."""
+        # Vinahouse typical structure
+        section_duration = 32 * 60 / bpm  # 8 bars
+        num_sections = int(duration / section_duration)
+        
+        # Pattern: intro, buildup, drop, verse, breakdown, drop, outro
+        pattern = ["intro", "buildup", "drop", "verse", "breakdown", "buildup", "drop", "outro"]
+        
+        sections = []
+        for i in range(num_sections):
+            if i < len(pattern):
+                sections.append(pattern[i])
+            elif i >= num_sections - 2:
+                sections.append("outro")
             else:
-                # Distance from range
-                distance = min(abs(bpm - tempo_range[0]), abs(bpm - tempo_range[1]))
-                score += max(0, 0.5 - distance / 50)
-            
-            # Energy matching
-            energy_level = genre_features['energy']
-            if energy_level == 'high' and energy > 0.6:
-                score += 0.3
-            elif energy_level == 'low' and energy < 0.4:
-                score += 0.3
-            elif energy_level == 'medium' and 0.4 <= energy <= 0.6:
-                score += 0.3
-            
-            if score > best_score:
-                best_score = score
-                best_genre = genre
+                sections.append("verse")
         
-        return best_genre
+        return sections
+    
+    def _calculate_danceability(self, y: np.ndarray, sr: int, bpm: float) -> float:
+        """
+        Calculate danceability score (0-1).
+        Based on rhythm strength and tempo.
+        """
+        # Onset strength variability
+        onset_env = librosa.onset.onset_strength(y=y, sr=sr)
+        onset_std = np.std(onset_env)
+        onset_mean = np.mean(onset_env)
+        
+        # Rhythm regularity
+        tempo_strength = onset_std / (onset_mean + 1e-10)
+        
+        # BPM factor (optimal dance BPM: 120-140)
+        bpm_factor = 1.0 - min(abs(bpm - 130) / 50, 1.0)
+        
+        # Combine
+        danceability = min((tempo_strength / 3) * bpm_factor, 1.0)
+        
+        return round(danceability, 2)
+    
+    def _analyze_spectral(self, y: np.ndarray, sr: int) -> Dict:
+        """Analyze spectral features."""
+        # Spectral centroid (brightness)
+        centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
+        
+        # Spectral rolloff
+        rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr)
+        
+        # Spectral bandwidth
+        bandwidth = librosa.feature.spectral_bandwidth(y=y, sr=sr)
+        
+        return {
+            "brightness": float(np.mean(centroid) / (sr / 2)),
+            "centroid_mean": float(np.mean(centroid)),
+            "rolloff_mean": float(np.mean(rolloff)),
+            "bandwidth_mean": float(np.mean(bandwidth))
+        }
+    
+    def _guess_genre(self, bpm: float, energy: float, spectral: Dict) -> str:
+        """Guess genre based on audio features."""
+        brightness = spectral.get("brightness", 0.5)
+        
+        if bpm >= 128 and bpm <= 140 and energy > 0.5:
+            return "vinahouse"
+        elif bpm >= 120 and bpm <= 130 and brightness > 0.4:
+            return "house"
+        elif bpm >= 138 and brightness > 0.5:
+            return "hardstyle"
+        elif bpm >= 140 and brightness > 0.6:
+            return "techno"
+        elif bpm >= 85 and bpm <= 115:
+            return "hiphop"
+        else:
+            return "pop"
+    
+    def find_drop_points(self, y: np.ndarray, sr: int, bpm: float) -> List[float]:
+        """
+        Find optimal drop points in the track.
+        Uses energy buildup detection.
+        """
+        # Calculate energy over time
+        rms = librosa.feature.rms(y=y, frame_length=4096, hop_length=1024)[0]
+        
+        # Smooth
+        from scipy.ndimage import gaussian_filter1d
+        rms_smooth = gaussian_filter1d(rms, sigma=10)
+        
+        # Find energy buildup followed by high energy
+        diff = np.diff(rms_smooth)
+        
+        drop_points = []
+        window = int(8 * 60 / bpm * sr / 1024)  # 8 bars in frames
+        
+        for i in range(window, len(diff) - window):
+            # Check for buildup (increasing energy before)
+            buildup = np.mean(diff[i-window:i]) > 0.001
+            # Check for high energy after
+            high_energy = np.mean(rms_smooth[i:i+window]) > np.mean(rms_smooth) * 1.2
+            
+            if buildup and high_energy:
+                time = i * 1024 / sr
+                drop_points.append(round(time, 2))
+        
+        # Remove duplicates (within 10 seconds)
+        filtered = []
+        for point in drop_points:
+            if not filtered or point - filtered[-1] > 10:
+                filtered.append(point)
+        
+        return filtered[:5]  # Max 5 drops
 
 
-# Singleton instance
-audio_analyzer = AudioAnalyzer()
+# Singleton
+audio_analyzer = ProfessionalAudioAnalyzer()

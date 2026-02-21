@@ -1,0 +1,101 @@
+# AI Remix Model Training Configuration
+# Optimized for RTX 4070 (8GB VRAM) / Mac M4 (24GB Unified Memory)
+
+# === HARDWARE OPTIMIZATION ===
+device: "cuda"  # or "mps" for Mac M4
+mixed_precision: "fp16"  # Critical for 8GB VRAM
+gradient_accumulation_steps: 16  # Simulate larger batch size
+
+# === TRAINING HYPERPARAMETERS ===
+training:
+  batch_size: 2  # Keep low for 8GB VRAM
+  learning_rate: 1.0e-4
+  weight_decay: 0.01
+  warmup_steps: 500
+  max_train_steps: 100000
+  num_epochs: 50
+  
+  # Checkpointing
+  save_every: 1000
+  eval_every: 500
+  checkpoint_dir: "checkpoints/"
+  
+  # Logging
+  log_every: 100
+  tensorboard_dir: "runs/"
+
+# === DATA CONFIGURATION ===
+data:
+  # Paths - UPDATE THESE TO YOUR ACTUAL DATA LOCATIONS
+  vinahouse_dir: "D:/Music/Vinahouse/"  # 10,000 Vinahouse tracks
+  nonstop_dir: "D:/Music/Nonstop/"      # 2,000 Nonstop tracks (1-4 hours each)
+  long_audio_cache_dir: "backend/cache/" # Output from Long Audio tab (Smart DJ Set Processor)
+  
+  # Processing
+  sample_rate: 44100
+  segment_duration: 30  # seconds - chunk size for training
+  segment_overlap: 5    # seconds - overlap between chunks
+  
+  # Output
+  processed_dir: "datasets/processed/"
+  metadata_dir: "datasets/metadata/"
+  cache_dir: "datasets/cache/"
+
+# === MODEL ARCHITECTURE ===
+model:
+  # DiT Architecture
+  hidden_size: 768
+  num_layers: 12
+  num_heads: 12
+  mlp_ratio: 4.0
+  
+  # Input/Output
+  input_channels: 1  # Mono audio / Mel spectrogram
+  latent_dim: 64     # VAE latent dimension
+  context_length: 512  # Sequence length for attention
+  
+  # Conditioning
+  conditioning:
+    bpm_bins: 40       # BPM range: 100-180
+    key_classes: 24    # 12 major + 12 minor
+    energy_levels: 5   # Low, Medium, High, Build, Drop
+
+# === DIFFUSION ===
+diffusion:
+  num_timesteps: 1000
+  beta_start: 0.0001
+  beta_end: 0.02
+  schedule: "cosine"  # or "linear"
+  
+  # Inference
+  inference_steps: 50  # Faster inference
+  temperature: 1.0     # Sampling randomness
+
+# === AUDIO PROCESSING ===
+audio:
+  sample_rate: 44100
+  n_mels: 80
+  n_fft: 2048
+  hop_length: 512
+  win_length: 2048
+
+# === EMOTIONAL TAGGER ===
+emotional_tagger:
+  # Energy analysis
+  rms_window: 2048
+  spectral_flux_window: 2048
+  
+  # Event detection
+  build_threshold: 0.7
+  drop_threshold: 0.9
+  breakdown_threshold: 0.3
+  
+  # Output labels
+  labels:
+    - "intro"
+    - "build"
+    - "drop"
+    - "breakdown"
+    - "outro"
+    - "verse"
+    - "chorus"

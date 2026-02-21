@@ -1,329 +1,237 @@
-import { motion } from 'framer-motion'
-import { Sliders, Sparkles, Download, Loader2, Play, Pause, AlertCircle } from 'lucide-react'
-import { useRemixStore } from '../store/remixStore'
-import { useState, useRef } from 'react'
+import React from 'react';
 
-const GENRES = [
-    { id: 'edm', name: 'EDM', icon: '🎵' },
-    { id: 'house', name: 'House', icon: '🏡' },
-    { id: 'hiphop', name: 'Hip-Hop', icon: '🎤' },
-    { id: 'pop', name: 'Pop', icon: '🎸' },
-    { id: 'trap', name: 'Trap', icon: '💥' },
-    { id: 'lofi', name: 'Lo-Fi', icon: '🌙' },
-    { id: 'techno', name: 'Techno', icon: '🎹' },
-    { id: 'dubstep', name: 'Dubstep', icon: '🔊' },
-]
+export interface RemixSettings {
+    genre: string;
+    bpm: number;
+    energyLevel: number;
+    reverb: number;
+    delay: number;
+    sidechain: boolean;
+    filter: number;
+}
 
-const STYLES = [
-    { id: 'club', name: 'Club Mix' },
-    { id: 'radio', name: 'Radio Edit' },
-    { id: 'extended', name: 'Extended Mix' },
-    { id: 'acoustic', name: 'Acoustic Version' },
-    { id: 'mashup', name: 'Mashup Style' },
-]
+interface RemixControlsProps {
+    settings: RemixSettings;
+    onSettingsChange: (settings: RemixSettings) => void;
+    onGenerate: () => void;
+    isGenerating: boolean;
+    hasStems: boolean;
+    originalBpm?: number;
+    genres?: string[];
+}
 
-function RemixControls() {
-    const {
-        remixSettings,
-        updateRemixSettings,
-        isRemixing,
-        remixProgress,
-        remixUrl,
-        createRemix,
-        jobId,
-        isProcessing,
-        audioAnalysis
-    } = useRemixStore()
+const DEFAULT_GENRES = [
+    { id: 'vinahouse', name: 'Vinahouse', bpm: 135, icon: '🎉' },
+    { id: 'edm', name: 'EDM', bpm: 128, icon: '🎹' },
+    { id: 'house', name: 'House', bpm: 124, icon: '🏠' },
+    { id: 'techno', name: 'Techno', bpm: 132, icon: '🎛️' },
+    { id: 'hardstyle', name: 'Hardstyle', bpm: 150, icon: '💪' },
+];
 
-    const [isPlaying, setIsPlaying] = useState(false)
-    const [error, setError] = useState<string | null>(null)
-    const audioRef = useRef<HTMLAudioElement | null>(null)
+export const RemixControls: React.FC<RemixControlsProps> = ({
+    settings,
+    onSettingsChange,
+    onGenerate,
+    isGenerating,
+    hasStems,
+    originalBpm,
+    genres
+}) => {
+    const genreList = genres?.map(g => typeof g === 'string' ? { id: g, name: g, bpm: 128, icon: '🎵' } : g) || DEFAULT_GENRES;
 
-    const canRemix = jobId && !isProcessing && audioAnalysis
+    const handleGenreSelect = (genreId: string, targetBpm: number) => {
+        onSettingsChange({
+            ...settings,
+            genre: genreId,
+            bpm: targetBpm
+        });
+    };
 
-    const handleGenerateRemix = async () => {
-        if (!canRemix) {
-            setError('Please upload and process a file first')
-            return
-        }
-
-        setError(null)
-
-        try {
-            await createRemix()
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'Remix generation failed')
-        }
-    }
-
-    const handlePlayPreview = () => {
-        if (!remixUrl || !audioRef.current) return
-
-        if (isPlaying) {
-            audioRef.current.pause()
-        } else {
-            audioRef.current.play()
-        }
-        setIsPlaying(!isPlaying)
-    }
-
-    const handleExport = (format: 'wav' | 'mp3' | 'stem') => {
-        if (remixUrl) {
-            const a = document.createElement('a')
-            a.href = remixUrl
-            a.download = `remix.${format}`
-            a.click()
-        }
-    }
+    const handleSliderChange = (key: keyof RemixSettings, value: number) => {
+        onSettingsChange({
+            ...settings,
+            [key]: value
+        });
+    };
 
     return (
-        <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="glass rounded-2xl p-6"
-        >
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                <Sliders className="w-5 h-5 text-primary-400" />
-                Remix Controls
-            </h3>
-
-            {/* Error Message */}
-            {error && (
-                <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-lg flex items-center gap-2 text-red-400"
-                >
-                    <AlertCircle className="w-5 h-5" />
-                    <span>{error}</span>
-                </motion.div>
-            )}
+        <div className="bg-gray-800/80 backdrop-blur border border-gray-700 rounded-lg p-5 space-y-5">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                    <span>🎚️</span>
+                    Remix Controls
+                </h3>
+                {originalBpm && (
+                    <span className="text-xs text-gray-400 bg-gray-700 px-2 py-1 rounded">
+                        Original: {originalBpm} BPM
+                    </span>
+                )}
+            </div>
 
             {/* Genre Selection */}
-            <div className="mb-6">
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                    Target Genre
-                </label>
-                <div className="grid grid-cols-4 gap-2">
-                    {GENRES.map(genre => (
+            <div>
+                <label className="text-sm text-gray-400 mb-2 block">Genre</label>
+                <div className="grid grid-cols-5 gap-2">
+                    {genreList.map((genre) => (
                         <button
                             key={genre.id}
-                            onClick={() => updateRemixSettings({ genre: genre.id })}
-                            className={`p-3 rounded-lg text-center transition-all ${remixSettings.genre === genre.id
-                                    ? 'bg-primary-500/20 border-primary-500 border'
-                                    : 'bg-slate-800 border border-slate-700 hover:border-slate-500'
-                                }`}
+                            onClick={() => handleGenreSelect(genre.id, genre.bpm)}
+                            className={`
+                p-3 rounded-lg border transition-all
+                ${settings.genre === genre.id
+                                    ? 'bg-gradient-to-br from-pink-600 to-purple-600 border-pink-400 text-white'
+                                    : 'bg-gray-700/50 border-gray-600 text-gray-300 hover:border-gray-500'
+                                }
+              `}
                         >
-                            <span className="text-xl block mb-1">{genre.icon}</span>
-                            <span className="text-xs text-slate-300">{genre.name}</span>
+                            <div className="text-xl mb-1">{genre.icon}</div>
+                            <div className="text-xs font-medium">{genre.name}</div>
+                            <div className="text-[10px] text-gray-400">{genre.bpm} BPM</div>
                         </button>
                     ))}
                 </div>
             </div>
 
-            {/* Style Selection */}
-            <div className="mb-6">
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                    Remix Style
-                </label>
-                <div className="flex flex-wrap gap-2">
-                    {STYLES.map(style => (
-                        <button
-                            key={style.id}
-                            onClick={() => updateRemixSettings({ style: style.id })}
-                            className={`px-4 py-2 rounded-lg text-sm transition-all ${remixSettings.style === style.id
-                                    ? 'bg-accent-500/20 border-accent-500 border text-accent-300'
-                                    : 'bg-slate-800 border border-slate-700 text-slate-300 hover:border-slate-500'
-                                }`}
-                        >
-                            {style.name}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            {/* BPM Control */}
-            <div className="mb-6">
+            {/* BPM Slider */}
+            <div>
                 <div className="flex justify-between items-center mb-2">
-                    <label className="text-sm font-medium text-slate-300">BPM</label>
-                    <span className="text-sm text-primary-400">{remixSettings.bpm}</span>
+                    <label className="text-sm text-gray-400">Target BPM</label>
+                    <span className="text-pink-400 font-mono font-bold">{settings.bpm}</span>
                 </div>
                 <input
                     type="range"
-                    min="60"
-                    max="200"
-                    value={remixSettings.bpm}
-                    onChange={(e) => updateRemixSettings({ bpm: parseInt(e.target.value) })}
-                    className="w-full accent-primary-500"
+                    min={100}
+                    max={180}
+                    value={settings.bpm}
+                    onChange={(e) => handleSliderChange('bpm', parseInt(e.target.value))}
+                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-pink-500"
                 />
-                <div className="flex justify-between text-xs text-slate-500 mt-1">
-                    <span>60</span>
-                    <span>Original: {remixSettings.originalBpm}</span>
-                    <span>200</span>
+                <div className="flex justify-between text-[10px] text-gray-500 mt-1">
+                    <span>100</span>
+                    <span>140 (Vinahouse)</span>
+                    <span>180</span>
                 </div>
             </div>
 
             {/* Energy Level */}
-            <div className="mb-6">
+            <div>
                 <div className="flex justify-between items-center mb-2">
-                    <label className="text-sm font-medium text-slate-300">Energy Level</label>
-                    <span className="text-sm text-primary-400">{Math.round(remixSettings.energyLevel * 100)}%</span>
+                    <label className="text-sm text-gray-400">Energy Level</label>
+                    <span className="text-orange-400 font-mono font-bold">{(settings.energyLevel * 100).toFixed(0)}%</span>
                 </div>
                 <input
                     type="range"
-                    min="0"
-                    max="1"
-                    step="0.01"
-                    value={remixSettings.energyLevel}
-                    onChange={(e) => updateRemixSettings({ energyLevel: parseFloat(e.target.value) })}
-                    className="w-full accent-primary-500"
+                    min={0}
+                    max={100}
+                    value={settings.energyLevel * 100}
+                    onChange={(e) => handleSliderChange('energyLevel', parseInt(e.target.value) / 100)}
+                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-orange-500"
                 />
-                <div className="flex justify-between text-xs text-slate-500 mt-1">
-                    <span>Chill</span>
-                    <span>High Energy</span>
+                <div className="flex justify-between text-[10px] text-gray-500 mt-1">
+                    <span>😴 Chill</span>
+                    <span>🔥 Club</span>
+                    <span>💥 Festival</span>
                 </div>
             </div>
 
-            {/* Effects */}
-            <div className="grid grid-cols-3 gap-4 mb-6">
+            {/* Effects Row */}
+            <div className="grid grid-cols-2 gap-4">
+                {/* Reverb */}
                 <div>
-                    <label className="block text-xs text-slate-400 mb-1">Reverb</label>
+                    <div className="flex justify-between items-center mb-2">
+                        <label className="text-sm text-gray-400">🌫️ Reverb</label>
+                        <span className="text-cyan-400 font-mono text-sm">{(settings.reverb * 100).toFixed(0)}%</span>
+                    </div>
                     <input
                         type="range"
-                        min="0"
-                        max="1"
-                        step="0.01"
-                        value={remixSettings.reverb}
-                        onChange={(e) => updateRemixSettings({ reverb: parseFloat(e.target.value) })}
-                        className="w-full accent-primary-500"
+                        min={0}
+                        max={100}
+                        value={settings.reverb * 100}
+                        onChange={(e) => handleSliderChange('reverb', parseInt(e.target.value) / 100)}
+                        className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-500"
                     />
                 </div>
+
+                {/* Delay */}
                 <div>
-                    <label className="block text-xs text-slate-400 mb-1">Delay</label>
+                    <div className="flex justify-between items-center mb-2">
+                        <label className="text-sm text-gray-400">📢 Delay</label>
+                        <span className="text-green-400 font-mono text-sm">{(settings.delay * 100).toFixed(0)}%</span>
+                    </div>
                     <input
                         type="range"
-                        min="0"
-                        max="1"
-                        step="0.01"
-                        value={remixSettings.delay}
-                        onChange={(e) => updateRemixSettings({ delay: parseFloat(e.target.value) })}
-                        className="w-full accent-primary-500"
-                    />
-                </div>
-                <div>
-                    <label className="block text-xs text-slate-400 mb-1">Filter</label>
-                    <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.01"
-                        value={remixSettings.filter}
-                        onChange={(e) => updateRemixSettings({ filter: parseFloat(e.target.value) })}
-                        className="w-full accent-primary-500"
+                        min={0}
+                        max={100}
+                        value={settings.delay * 100}
+                        onChange={(e) => handleSliderChange('delay', parseInt(e.target.value) / 100)}
+                        className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-green-500"
                     />
                 </div>
             </div>
 
-            {/* Progress Bar */}
-            {isRemixing && (
-                <div className="mb-4">
-                    <div className="flex justify-between text-sm text-slate-400 mb-1">
-                        <span>Generating remix...</span>
-                        <span>{remixProgress}%</span>
-                    </div>
-                    <div className="w-full bg-slate-700 rounded-full h-2">
-                        <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${remixProgress}%` }}
-                            className="h-2 rounded-full bg-gradient-to-r from-primary-500 to-accent-500"
-                        />
-                    </div>
+            {/* Sidechain Toggle */}
+            <div className="flex items-center justify-between p-3 bg-gray-700/30 rounded-lg">
+                <div>
+                    <div className="text-white font-medium">🎹 Sidechain Compression</div>
+                    <div className="text-xs text-gray-400">Pumping effect on kick (Vinahouse signature)</div>
                 </div>
-            )}
+                <button
+                    onClick={() => onSettingsChange({ ...settings, sidechain: !settings.sidechain })}
+                    className={`w-14 h-7 rounded-full transition-colors ${settings.sidechain ? 'bg-pink-600' : 'bg-gray-600'
+                        }`}
+                >
+                    <div
+                        className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${settings.sidechain ? 'translate-x-8' : 'translate-x-1'
+                            }`}
+                    />
+                </button>
+            </div>
+
+            {/* Filter */}
+            <div>
+                <div className="flex justify-between items-center mb-2">
+                    <label className="text-sm text-gray-400">🔽 Filter Sweep</label>
+                    <span className="text-yellow-400 font-mono text-sm">{(settings.filter * 100).toFixed(0)}%</span>
+                </div>
+                <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={settings.filter * 100}
+                    onChange={(e) => handleSliderChange('filter', parseInt(e.target.value) / 100)}
+                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-yellow-500"
+                />
+            </div>
 
             {/* Generate Button */}
-            <motion.button
-                whileHover={{ scale: canRemix ? 1.02 : 1 }}
-                whileTap={{ scale: canRemix ? 0.98 : 1 }}
-                onClick={handleGenerateRemix}
-                disabled={isRemixing || !canRemix}
-                className={`w-full py-4 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all ${canRemix
-                        ? 'bg-gradient-to-r from-primary-500 to-accent-500 hover:from-primary-400 hover:to-accent-400 text-white'
-                        : 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                    }`}
+            <button
+                onClick={onGenerate}
+                disabled={!hasStems || isGenerating}
+                className={`
+          w-full py-4 rounded-lg font-bold text-lg transition-all
+          ${!hasStems
+                        ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                        : isGenerating
+                            ? 'bg-purple-600 text-white animate-pulse cursor-wait'
+                            : 'bg-gradient-to-r from-pink-600 to-purple-600 text-white hover:from-pink-500 hover:to-purple-500 shadow-lg hover:shadow-pink-500/25'
+                    }
+        `}
             >
-                {isRemixing ? (
-                    <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        <span>Generating... {remixProgress}%</span>
-                    </>
-                ) : (
-                    <>
-                        <Sparkles className="w-5 h-5" />
-                        <span>{canRemix ? 'Generate Remix' : 'Upload a file first'}</span>
-                    </>
-                )}
-            </motion.button>
+                {!hasStems
+                    ? '⚠️ Separate stems first'
+                    : isGenerating
+                        ? '🎵 Generating Remix...'
+                        : '🎵 Generate Remix'
+                }
+            </button>
 
-            {/* Preview & Export */}
-            {remixUrl && !isRemixing && (
-                <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    className="mt-4 space-y-3"
-                >
-                    {/* Audio Element */}
-                    <audio
-                        ref={audioRef}
-                        src={remixUrl}
-                        onEnded={() => setIsPlaying(false)}
-                    />
+            {/* Info */}
+            <div className="text-[10px] text-gray-500 text-center">
+                Using Pedalboard VST-grade effects • Club mastering at -8 LUFS
+            </div>
+        </div>
+    );
+};
 
-                    {/* Preview Button */}
-                    <button
-                        onClick={handlePlayPreview}
-                        className="w-full py-3 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-medium flex items-center justify-center gap-2"
-                    >
-                        {isPlaying ? (
-                            <>
-                                <Pause className="w-5 h-5" />
-                                <span>Pause Preview</span>
-                            </>
-                        ) : (
-                            <>
-                                <Play className="w-5 h-5" />
-                                <span>Preview Remix</span>
-                            </>
-                        )}
-                    </button>
-
-                    {/* Export Options */}
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => handleExport('wav')}
-                            className="flex-1 py-3 rounded-xl bg-green-600 hover:bg-green-500 text-white font-medium flex items-center justify-center gap-2"
-                        >
-                            <Download className="w-5 h-5" />
-                            WAV
-                        </button>
-                        <button
-                            onClick={() => handleExport('mp3')}
-                            className="flex-1 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium flex items-center justify-center gap-2"
-                        >
-                            <Download className="w-5 h-5" />
-                            MP3
-                        </button>
-                        <button
-                            onClick={() => handleExport('stem')}
-                            className="py-3 px-4 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-medium"
-                        >
-                            STEM
-                        </button>
-                    </div>
-                </motion.div>
-            )}
-        </motion.div>
-    )
-}
-
-export default RemixControls
+export default RemixControls;

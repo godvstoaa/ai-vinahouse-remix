@@ -11,7 +11,7 @@ import ProcessingStatus from './ProcessingStatus'
 import { TrainingPanel } from './TrainingPanel'
 
 function Dashboard() {
-    const { originalFile, isProcessing, remixUrl, audioAnalysis } = useRemixStore()
+    const { originalFile, isProcessing, audioAnalysis } = useRemixStore()
     const [activeTab, setActiveTab] = useState<'remix' | 'train'>('remix')
 
     return (

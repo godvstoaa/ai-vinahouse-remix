@@ -38,10 +38,6 @@ function WaveformDisplay() {
             setCurrentTime(wavesurfer.current?.getCurrentTime() || 0)
         })
 
-        wavesurfer.current.on('seek', () => {
-            setCurrentTime(wavesurfer.current?.getCurrentTime() || 0)
-        })
-
         wavesurfer.current.on('play', () => setIsPlaying(true))
         wavesurfer.current.on('pause', () => setIsPlaying(false))
 

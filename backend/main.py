@@ -14,12 +14,25 @@ import asyncio
 import json
 from datetime import datetime
 
-# Import ML modules
+# Import ML modules - Professional Version
 from services.source_separator import SourceSeparator
 from services.genre_detector import GenreDetector
-from services.audio_analyzer import AudioAnalyzer
-from services.remix_generator import RemixGenerator
+from services.audio_analyzer import ProfessionalAudioAnalyzer, audio_analyzer
+from services.remix_generator import RemixGenerator, remix_generator
+from services.demucs_separator import DemucsSeparator, demucs_separator
+from services.pedalboard_effects import HAS_PEDALBOARD, professional_effects
 from services.model_trainer import ModelTrainer, TrainingConfig, get_trainer
+from watermark import embed_watermark, detect_watermark, analyze_spectrum
+from services.long_audio_processor import get_long_audio_processor, LongAudioProcessor
+
+# Training router
+from routers.training import router as training_router
+
+import torch
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="AI Remix Studio API",
@@ -30,11 +43,14 @@ app = FastAPI(
 # CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include routers
+app.include_router(training_router)
 
 # Directories
 UPLOAD_DIR = "uploads"
@@ -88,11 +104,36 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    models = get_models()
+    """Enhanced health check with system info"""
     return {
         "status": "healthy",
-        "models_loaded": source_separator is not None,
-        "gpu_available": torch.cuda.is_available() if 'torch' in globals() else False
+        "version": "2.0.0",
+        "features": {
+            "pedalboard": HAS_PEDALBOARD,
+            "cuda": torch.cuda.is_available(),
+            "device": "cuda" if torch.cuda.is_available() else "cpu"
+        },
+        "gpu": {
+            "available": torch.cuda.is_available(),
+            "name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+            "vram_gb": round(torch.cuda.get_device_properties(0).total_memory / 1024**3, 1) if torch.cuda.is_available() else 0
+        },
+        "jobs_count": len(jobs)
+    }
+
+
+@app.get("/api/system/info")
+async def get_system_info():
+    """Get detailed system information"""
+    return {
+        "audio_engine": {
+            "separator": "Demucs v4 (htdemucs)",
+            "effects": "Pedalboard VST-grade" if HAS_PEDALBOARD else "scipy fallback",
+            "analyzer": "Madmom + Essentia + Librosa"
+        },
+        "genres_available": list(remix_generator.genre_presets.keys()) if remix_generator else ["vinahouse", "edm", "house"],
+        "cuda_available": torch.cuda.is_available(),
+        "device": "cuda" if torch.cuda.is_available() else "cpu"
     }
 
 
@@ -436,6 +477,385 @@ async def get_training_results():
     return training_status["results"]
 
 
+# =====================
+# WATERMARK API
+# =====================
+
+class WatermarkRequest(BaseModel):
+    audio_path: str
+    producer_id: str
+    track_id: str = ""
+    output_path: Optional[str] = None
+
+
+class WatermarkDetectRequest(BaseModel):
+    audio_path: str
+
+
+@app.post("/api/watermark/embed")
+async def api_embed_watermark(request: WatermarkRequest):
+    """
+    Embed ultrasonic watermark into audio file
+    
+    - **audio_path**: Path to audio file
+    - **producer_id**: Your producer identifier (max 32 chars)
+    - **track_id**: Track identifier (max 32 chars)
+    - **output_path**: Optional output path (default: <input>_watermarked.<ext>)
+    
+    Watermark is embedded at 19kHz (ultrasonic, inaudible)
+    """
+    if not os.path.exists(request.audio_path):
+        raise HTTPException(status_code=404, detail=f"Audio file not found: {request.audio_path}")
+    
+    result = embed_watermark(
+        audio_path=request.audio_path,
+        producer_id=request.producer_id,
+        track_id=request.track_id,
+        output_path=request.output_path
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error", "Watermark embedding failed"))
+    
+    return result
+
+
+@app.post("/api/watermark/detect")
+async def api_detect_watermark(request: WatermarkDetectRequest):
+    """
+    Detect ultrasonic watermark in audio file
+    
+    Returns:
+    - **has_watermark**: Boolean indicating watermark presence
+    - **producer_id**: Extracted producer ID (if found)
+    - **track_id**: Extracted track ID (if found)
+    - **timestamp**: Original embed timestamp (if found)
+    - **confidence**: Detection confidence (0-1)
+    - **ultrasonic_energy**: Energy level in ultrasonic range
+    """
+    if not os.path.exists(request.audio_path):
+        raise HTTPException(status_code=404, detail=f"Audio file not found: {request.audio_path}")
+    
+    result = detect_watermark(request.audio_path)
+    return result
+
+
+@app.post("/api/watermark/analyze")
+async def api_analyze_spectrum(request: WatermarkDetectRequest):
+    """
+    Analyze audio spectrum - useful for visualization
+    
+    Returns frequency spectrum data focused on ultrasonic region
+    """
+    if not os.path.exists(request.audio_path):
+        raise HTTPException(status_code=404, detail=f"Audio file not found: {request.audio_path}")
+    
+    result = analyze_spectrum(request.audio_path)
+    return result
+
+
+@app.post("/api/watermark/embed-job/{job_id}")
+async def embed_watermark_to_job(job_id: str, producer_id: str, track_id: str = ""):
+    """
+    Embed watermark to an existing job's remix output
+    """
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    job = jobs[job_id]
+    remix = job.get("remix")
+    
+    if not remix:
+        raise HTTPException(status_code=400, detail="No remix available for this job")
+    
+    remix_path = remix["path"]
+    
+    result = embed_watermark(
+        audio_path=remix_path,
+        producer_id=producer_id,
+        track_id=track_id,
+        output_path=remix_path  # Overwrite
+    )
+    
+    if result.get("success"):
+        job["watermark"] = {
+            "producer_id": producer_id,
+            "track_id": track_id,
+            "embedded": True
+        }
+    
+    return result
+
+
+# =====================
+# LONG AUDIO PROCESSING API (DJ Sets 2-5h)
+# =====================
+
+class LongAudioRequest(BaseModel):
+    file_path: str
+    force_reprocess: bool = False
+
+
+class FolderProcessRequest(BaseModel):
+    folder_path: str
+    recursive: bool = True
+    force_reprocess: bool = False
+    max_workers: int = 2
+    skip_cached: bool = True
+
+
+long_audio_status: Dict[str, Any] = {
+    "is_processing": False,
+    "current_file": None,
+    "progress": None,
+    "metadata": None,
+    "folder_progress": None,
+    "dataset": None
+}
+
+
+@app.post("/api/long-audio/process")
+async def process_long_audio(request: LongAudioRequest, background_tasks: BackgroundTasks):
+    """
+    Process a long audio file (DJ set, 2-5 hours)
+    
+    - Creates hierarchical chunks (30s segments)
+    - Caches spectrograms for efficient training
+    - Returns metadata with chunk information
+    """
+    global long_audio_status
+    
+    if long_audio_status["is_processing"]:
+        raise HTTPException(status_code=400, detail="Already processing a file")
+    
+    if not os.path.exists(request.file_path):
+        raise HTTPException(status_code=404, detail=f"File not found: {request.file_path}")
+    
+    long_audio_status["is_processing"] = True
+    long_audio_status["current_file"] = request.file_path
+    long_audio_status["progress"] = None
+    
+    background_tasks.add_task(run_long_audio_processing, request.file_path, request.force_reprocess)
+    
+    return {"message": "Processing started", "file_path": request.file_path}
+
+
+async def run_long_audio_processing(file_path: str, force_reprocess: bool):
+    """Background task for long audio processing"""
+    global long_audio_status
+    
+    try:
+        processor = get_long_audio_processor()
+        
+        def progress_callback(progress):
+            long_audio_status["progress"] = {
+                "stage": progress.stage,
+                "current": progress.current,
+                "total": progress.total,
+                "message": progress.message,
+                "percentage": progress.percentage
+            }
+        
+        processor.set_progress_callback(progress_callback)
+        metadata = processor.process_file(file_path, force_reprocess)
+        
+        long_audio_status["is_processing"] = False
+        long_audio_status["current_file"] = None
+        long_audio_status["progress"] = None
+        long_audio_status["metadata"] = metadata
+        
+    except Exception as e:
+        long_audio_status["is_processing"] = False
+        long_audio_status["progress"] = {"error": str(e)}
+        print(f"Long audio processing error: {e}")
+
+
+@app.get("/api/long-audio/status")
+async def get_long_audio_status():
+    """Get current long audio processing status"""
+    return long_audio_status
+
+
+@app.get("/api/long-audio/stats")
+async def get_long_audio_stats():
+    """Get statistics about processed long audio files"""
+    if not long_audio_status.get("metadata"):
+        return {"message": "No files processed yet"}
+    
+    processor = get_long_audio_processor()
+    stats = processor.get_dataset_stats(long_audio_status["metadata"])
+    return stats
+
+
+@app.post("/api/long-audio/cancel")
+async def cancel_long_audio():
+    """Cancel current long audio processing"""
+    processor = get_long_audio_processor()
+    processor.cancel()
+    return {"message": "Cancellation requested"}
+
+
+@app.delete("/api/long-audio/cache")
+async def clear_long_audio_cache(file_path: Optional[str] = None):
+    """Clear cache for long audio processing"""
+    processor = get_long_audio_processor()
+    processor.clear_cache(file_path)
+    return {"message": "Cache cleared"}
+
+
+# =====================
+# FOLDER PROCESSING API
+# =====================
+
+@app.get("/api/long-audio/metadata")
+async def get_file_metadata(file_path: str):
+    """Get cached metadata for a specific file"""
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    processor = get_long_audio_processor()
+    metadata = processor.load_cached_metadata(file_path)
+    
+    if not metadata:
+        raise HTTPException(status_code=404, detail="Metadata not found in cache")
+    
+    return metadata
+
+
+@app.get("/api/long-audio/scan-folder")
+async def scan_folder_for_audio(folder_path: str, recursive: bool = True):
+    """
+    Scan a folder for audio files
+    
+    Returns list of found audio files with:
+    - path, name, size_mb, estimated_duration_min, cached status
+    """
+    if not os.path.exists(folder_path):
+        raise HTTPException(status_code=404, detail=f"Folder not found: {folder_path}")
+    
+    processor = get_long_audio_processor()
+    
+    try:
+        files = processor.scan_folder(folder_path, recursive)
+        return {
+            "folder_path": folder_path,
+            "total_files": len(files),
+            "total_size_mb": sum(f['size_mb'] for f in files),
+            "total_duration_hours": sum(f['estimated_duration_min'] for f in files) / 60,
+            "cached_files": sum(1 for f in files if f['cached']),
+            "files": files
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/long-audio/process-folder")
+async def process_folder(request: FolderProcessRequest, background_tasks: BackgroundTasks):
+    """
+    Process all audio files in a folder
+    
+    - Scans folder for audio files (MP3, WAV, FLAC, etc.)
+    - Processes each file in parallel
+    - Creates combined dataset for training
+    - Returns dataset metadata
+    """
+    global long_audio_status
+    
+    if long_audio_status["is_processing"]:
+        raise HTTPException(status_code=400, detail="Already processing")
+    
+    if not os.path.exists(request.folder_path):
+        raise HTTPException(status_code=404, detail=f"Folder not found: {request.folder_path}")
+    
+    long_audio_status["is_processing"] = True
+    long_audio_status["current_file"] = request.folder_path
+    long_audio_status["folder_progress"] = None
+    long_audio_status["progress"] = None
+    
+    background_tasks.add_task(
+        run_folder_processing,
+        request.folder_path,
+        request.recursive,
+        request.force_reprocess,
+        request.max_workers,
+        request.skip_cached
+    )
+    
+    return {
+        "message": "Folder processing started",
+        "folder_path": request.folder_path
+    }
+
+
+async def run_folder_processing(
+    folder_path: str,
+    recursive: bool,
+    force_reprocess: bool,
+    max_workers: int,
+    skip_cached: bool
+):
+    """Background task for folder processing"""
+    global long_audio_status
+    
+    try:
+        processor = get_long_audio_processor()
+        
+        def progress_callback(progress):
+            long_audio_status["progress"] = progress
+            long_audio_status["folder_progress"] = processor.get_folder_progress()
+        
+        processor.set_progress_callback(progress_callback)
+        
+        dataset = processor.process_folder(
+            folder_path=folder_path,
+            recursive=recursive,
+            force_reprocess=force_reprocess,
+            max_workers=max_workers,
+            skip_cached=skip_cached
+        )
+        
+        long_audio_status["is_processing"] = False
+        long_audio_status["current_file"] = None
+        long_audio_status["progress"] = None
+        long_audio_status["folder_progress"] = processor.get_folder_progress()
+        long_audio_status["dataset"] = dataset
+        
+    except Exception as e:
+        long_audio_status["is_processing"] = False
+        long_audio_status["progress"] = {"error": str(e)}
+        print(f"Folder processing error: {e}")
+
+
+@app.get("/api/long-audio/folder-progress")
+async def get_folder_progress():
+    """Get detailed progress for folder processing"""
+    processor = get_long_audio_processor()
+    progress = processor.get_folder_progress()
+    
+    return {
+        "is_processing": long_audio_status["is_processing"],
+        "progress": long_audio_status.get("progress"),
+        "folder_progress": progress
+    }
+
+
+@app.get("/api/long-audio/datasets")
+async def list_cached_datasets():
+    """List all cached datasets"""
+    processor = get_long_audio_processor()
+    datasets = processor.get_cached_datasets()
+    return {"datasets": datasets}
+
+
+@app.get("/api/long-audio/dataset")
+async def get_current_dataset():
+    """Get current processed dataset"""
+    if not long_audio_status.get("dataset"):
+        return {"message": "No dataset processed yet"}
+    
+    return long_audio_status["dataset"]
+
+
 @app.delete("/api/job/{job_id}")
 async def delete_job(job_id: str):
     """Delete job and associated files"""
@@ -468,4 +888,4 @@ async def delete_job(job_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8002)

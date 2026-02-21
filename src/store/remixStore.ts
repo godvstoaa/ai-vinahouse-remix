@@ -129,7 +129,7 @@ export const useRemixStore = create<RemixState>((set, get) => ({
     history: [],
     apiConnected: false,
 
-    setOriginalFile: (file) => set((state) => ({
+    setOriginalFile: (file) => set(() => ({
         originalFile: file,
         originalUrl: file ? URL.createObjectURL(file) : null,
         remixUrl: null,

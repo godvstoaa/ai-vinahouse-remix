@@ -1,0 +1,36 @@
+# AI Remix Training Dependencies
+# Install: pip install -r requirements_train.txt
+
+# === CORE ML FRAMEWORKS ===
+torch>=2.0.0
+torchaudio>=2.0.0
+numpy>=1.24.0,<2.0.0
+
+# === HUGGING FACE ECOSYSTEM ===
+accelerate>=0.24.0        # Distributed training, gradient accumulation
+diffusers>=0.24.0         # Diffusion models
+transformers>=4.35.0      # For DiT architecture components
+safetensors>=0.4.0        # Safe model serialization
+
+# === AUDIO PROCESSING ===
+librosa>=0.10.0           # Audio loading, mel spectrogram
+soundfile>=0.12.0         # Audio I/O
+audioread>=3.0.0          # Audio format support
+scipy>=1.10.0             # Signal processing
+
+# === DATA PROCESSING ===
+pyyaml>=6.0               # Config file parsing
+tqdm>=4.65.0              # Progress bars
+webdataset>=0.2.0         # Streaming large datasets (optional)
+
+# === MONITORING & LOGGING ===
+tensorboard>=2.15.0       # Training visualization
+wandb>=0.16.0             # Experiment tracking (optional)
+
+# === SYSTEM UTILITIES ===
+psutil>=5.9.0             # Memory monitoring
+gpustat>=1.1.0            # GPU monitoring (optional)
+
+# === DEVELOPMENT ===
+pytest>=7.4.0             # Testing
+black>=23.0.0             # Code formatting

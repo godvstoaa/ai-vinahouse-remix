@@ -71,7 +71,7 @@ const UpdateButton: React.FC = () => {
             setDownloadProgress(progress.percent);
         });
 
-        window.electronAPI?.onUpdateDownloaded((info) => {
+        window.electronAPI?.onUpdateDownloaded(() => {
             setStatus('downloaded');
             setShowNotification(true);
         });

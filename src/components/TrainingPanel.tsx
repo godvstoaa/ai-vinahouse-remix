@@ -1,240 +1,428 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+/**
+ * TrainingPanel - UI để chạy training DiT model
+ */
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { api } from '../lib/api';
 
 interface TrainingStatus {
-    is_training: boolean;
-    progress: number;
-    total_songs: number;
-    processed_songs: number;
-    current_song: string | null;
-    results: any;
+    is_running: boolean;
+    current_step: number;
+    total_steps: number;
+    current_epoch: number;
+    loss: number;
+    learning_rate: number;
+    gpu_memory_gb: number;
+    eta_hours: number;
+    status_message: string;
 }
 
-export const TrainingPanel: React.FC = () => {
-    const [datasetPath, setDatasetPath] = useState('');
-    const [status, setStatus] = useState<TrainingStatus | null>(null);
-    const [isStarting, setIsStarting] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+interface DataStatus {
+    total_files: number;
+    processed_files: number;
+    total_segments: number;
+    is_processing: boolean;
+}
+
+const TrainingPanel: React.FC = () => {
+    const [activeTab, setActiveTab] = useState<'data' | 'train' | 'monitor'>('data');
+
+    // Data prep state
+    const [dataPath, setDataPath] = useState('D:/Music/Vinahouse/');
+    const [nonstopPath, setNonstopPath] = useState('D:/Music/Nonstop/');
+    const [workers, setWorkers] = useState(4);
+    const [dataStatus, setDataStatus] = useState<DataStatus | null>(null);
+
+    // Training state
+    const [trainingStatus, setTrainingStatus] = useState<TrainingStatus | null>(null);
+    const [config, setConfig] = useState({
+        batch_size: 2,
+        learning_rate: 0.0001,
+        gradient_accumulation_steps: 16,
+        max_steps: 100000,
+        mixed_precision: 'fp16'
+    });
 
     // Poll training status
     useEffect(() => {
-        const fetchStatus = async () => {
+        const interval = setInterval(async () => {
             try {
-                const response = await fetch('/api/train/status');
-                const data = await response.json();
-                setStatus(data);
+                const response = await api.get('/training/status');
+                setTrainingStatus(response.data);
             } catch (e) {
-                console.error('Failed to fetch training status:', e);
+                // Training endpoint not available yet
             }
-        };
+        }, 2000);
 
-        fetchStatus();
-        const interval = setInterval(fetchStatus, 2000);
         return () => clearInterval(interval);
     }, []);
 
-    const handleStartTraining = async () => {
-        if (!datasetPath.trim()) {
-            setError('Please enter dataset path');
-            return;
-        }
-
-        setIsStarting(true);
-        setError(null);
-
+    const startDataPrep = async () => {
         try {
-            const response = await fetch('/api/train/start', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    dataset_path: datasetPath,
-                    output_model_path: 'models',
-                    segment_duration: 30.0
-                })
+            await api.post('/training/data-prep', {
+                input_path: dataPath,
+                workers: workers
             });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.detail || 'Failed to start training');
-            }
-
-            console.log('Training started:', data);
-        } catch (e: any) {
-            setError(e.message);
-        } finally {
-            setIsStarting(false);
+            alert('Data preparation started!');
+        } catch (error: any) {
+            alert(`Error: ${error.response?.data?.detail || error.message}`);
         }
     };
 
-    const handleStopTraining = async () => {
+    const startEmotionalTagging = async () => {
         try {
-            await fetch('/api/train/stop', { method: 'POST' });
-        } catch (e) {
-            console.error('Failed to stop training:', e);
+            await api.post('/training/emotional-tagger', {
+                input_path: nonstopPath
+            });
+            alert('Emotional tagging started!');
+        } catch (error: any) {
+            alert(`Error: ${error.response?.data?.detail || error.message}`);
+        }
+    };
+
+    const startTraining = async () => {
+        try {
+            await api.post('/training/start', config);
+            alert('Training started!');
+        } catch (error: any) {
+            alert(`Error: ${error.response?.data?.detail || error.message}`);
+        }
+    };
+
+    const stopTraining = async () => {
+        try {
+            await api.post('/training/stop');
+            alert('Training stopped!');
+        } catch (error: any) {
+            alert(`Error: ${error.response?.data?.detail || error.message}`);
         }
     };
 
     return (
-        <div className="bg-gradient-to-br from-purple-900/50 to-indigo-900/50 rounded-2xl p-6 border border-purple-500/30">
-            <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-                <span className="text-3xl">🎓</span>
-                Model Training
+        <div className="bg-gray-900 rounded-xl p-6 text-white">
+            <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
+                <span className="text-3xl">🧠</span>
+                AI Training Module
             </h2>
 
-            {/* Dataset Path Input */}
-            <div className="mb-6">
-                <label className="block text-purple-200 text-sm mb-2">
-                    Music Library Path
-                </label>
-                <div className="flex gap-2">
-                    <input
-                        type="text"
-                        value={datasetPath}
-                        onChange={(e) => setDatasetPath(e.target.value)}
-                        placeholder="e.g., C:\Music or /home/user/music"
-                        className="flex-1 bg-black/30 border border-purple-500/50 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-purple-400"
-                        disabled={status?.is_training}
-                    />
+            {/* Tabs */}
+            <div className="flex gap-2 mb-6">
+                {[
+                    { id: 'data', label: '📁 Chuẩn bị Data', icon: '📁' },
+                    { id: 'train', label: '⚙️ Cấu hình Training', icon: '⚙️' },
+                    { id: 'monitor', label: '📊 Theo dõi', icon: '📊' }
+                ].map(tab => (
                     <button
-                        onClick={handleStartTraining}
-                        disabled={status?.is_training || isStarting}
-                        className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold rounded-lg hover:from-purple-500 hover:to-pink-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id as any)}
+                        className={`px-4 py-2 rounded-lg font-medium transition-all ${activeTab === tab.id
+                                ? 'bg-purple-600 text-white'
+                                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                            }`}
                     >
-                        {isStarting ? 'Starting...' : 'Start Training'}
+                        {tab.label}
                     </button>
-                </div>
-                {error && (
-                    <p className="text-red-400 text-sm mt-2">{error}</p>
-                )}
+                ))}
             </div>
 
-            {/* Training Progress */}
-            <AnimatePresence>
-                {status && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -20 }}
-                        className="space-y-4"
-                    >
-                        {/* Status Badge */}
-                        <div className="flex items-center justify-between">
-                            <span className={`px-3 py-1 rounded-full text-sm font-medium ${status.is_training
-                                ? 'bg-green-500/20 text-green-400 animate-pulse'
-                                : status.results?.status === 'completed'
-                                    ? 'bg-blue-500/20 text-blue-400'
-                                    : 'bg-gray-500/20 text-gray-400'
-                                }`}>
-                                {status.is_training
-                                    ? '🔄 Training...'
-                                    : status.results?.status === 'completed'
-                                        ? '✅ Completed'
-                                        : '⏸️ Idle'}
-                            </span>
+            {/* Tab Content */}
+            {activeTab === 'data' && (
+                <div className="space-y-6">
+                    {/* Data Preparation */}
+                    <div className="bg-gray-800 rounded-lg p-5">
+                        <h3 className="text-lg font-semibold mb-4">🎵 Chuẩn bị Data Vinahouse (10.000 bài)</h3>
 
-                            {status.is_training && (
-                                <button
-                                    onClick={handleStopTraining}
-                                    className="px-4 py-1 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors text-sm"
-                                >
-                                    Stop
-                                </button>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm text-gray-400 mb-1">Đường dẫn thư mục nhạc</label>
+                                <input
+                                    type="text"
+                                    value={dataPath}
+                                    onChange={(e) => setDataPath(e.target.value)}
+                                    className="w-full bg-gray-700 rounded px-3 py-2 text-white"
+                                    placeholder="D:/Music/Vinahouse/"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm text-gray-400 mb-1">Số workers (CPU cores)</label>
+                                <input
+                                    type="number"
+                                    value={workers}
+                                    onChange={(e) => setWorkers(parseInt(e.target.value))}
+                                    className="w-32 bg-gray-700 rounded px-3 py-2 text-white"
+                                    min="1"
+                                    max="16"
+                                />
+                            </div>
+
+                            <button
+                                onClick={startDataPrep}
+                                className="bg-green-600 hover:bg-green-700 px-6 py-2 rounded-lg font-medium transition-all"
+                            >
+                                ▶️ Bắt đầu Cắt Data
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Emotional Tagger */}
+                    <div className="bg-gray-800 rounded-lg p-5">
+                        <h3 className="text-lg font-semibold mb-4">🎭 Phân tích Nonstop (2.000 bài)</h3>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm text-gray-400 mb-1">Đường dẫn thư mục Nonstop</label>
+                                <input
+                                    type="text"
+                                    value={nonstopPath}
+                                    onChange={(e) => setNonstopPath(e.target.value)}
+                                    className="w-full bg-gray-700 rounded px-3 py-2 text-white"
+                                    placeholder="D:/Music/Nonstop/"
+                                />
+                            </div>
+
+                            <button
+                                onClick={startEmotionalTagging}
+                                className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded-lg font-medium transition-all"
+                            >
+                                ▶️ Bắt đầu Phân tích Cảm xúc
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Data Status */}
+                    {dataStatus && (
+                        <div className="bg-gray-800 rounded-lg p-5">
+                            <h3 className="text-lg font-semibold mb-4">📈 Trạng thái Data</h3>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <span className="text-gray-400">Files đã xử lý:</span>
+                                    <span className="ml-2 text-white">{dataStatus.processed_files}/{dataStatus.total_files}</span>
+                                </div>
+                                <div>
+                                    <span className="text-gray-400">Segments tạo ra:</span>
+                                    <span className="ml-2 text-white">{dataStatus.total_segments.toLocaleString()}</span>
+                                </div>
+                            </div>
+
+                            {dataStatus.is_processing && (
+                                <div className="mt-4">
+                                    <div className="bg-gray-700 rounded-full h-2 overflow-hidden">
+                                        <div
+                                            className="bg-purple-500 h-full transition-all"
+                                            style={{ width: `${(dataStatus.processed_files / dataStatus.total_files) * 100}%` }}
+                                        />
+                                    </div>
+                                </div>
                             )}
                         </div>
+                    )}
+                </div>
+            )}
 
-                        {/* Progress Bar */}
-                        {status.is_training && (
-                            <div className="space-y-2">
-                                <div className="flex justify-between text-sm text-purple-200">
-                                    <span>Progress</span>
-                                    <span>{status.processed_songs} / {status.total_songs} songs</span>
-                                </div>
-                                <div className="h-3 bg-black/30 rounded-full overflow-hidden">
-                                    <motion.div
-                                        className="h-full bg-gradient-to-r from-purple-500 to-pink-500"
-                                        initial={{ width: 0 }}
-                                        animate={{ width: `${status.progress}%` }}
-                                        transition={{ duration: 0.5 }}
-                                    />
-                                </div>
-                                <div className="text-center text-purple-300 font-bold">
-                                    {status.progress.toFixed(1)}%
-                                </div>
+            {activeTab === 'train' && (
+                <div className="space-y-6">
+                    <div className="bg-gray-800 rounded-lg p-5">
+                        <h3 className="text-lg font-semibold mb-4">⚙️ Cấu hình Training</h3>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm text-gray-400 mb-1">Batch Size</label>
+                                <input
+                                    type="number"
+                                    value={config.batch_size}
+                                    onChange={(e) => setConfig({ ...config, batch_size: parseInt(e.target.value) })}
+                                    className="w-full bg-gray-700 rounded px-3 py-2 text-white"
+                                    min="1"
+                                    max="8"
+                                />
+                                <span className="text-xs text-gray-500">Giữ ở 2 cho 8GB VRAM</span>
                             </div>
-                        )}
 
-                        {/* Current Song */}
-                        {status.is_training && status.current_song && (
-                            <div className="bg-black/20 rounded-lg p-3">
-                                <p className="text-xs text-purple-400 mb-1">Currently Processing:</p>
-                                <p className="text-white text-sm truncate">{status.current_song}</p>
+                            <div>
+                                <label className="block text-sm text-gray-400 mb-1">Learning Rate</label>
+                                <input
+                                    type="number"
+                                    value={config.learning_rate}
+                                    onChange={(e) => setConfig({ ...config, learning_rate: parseFloat(e.target.value) })}
+                                    className="w-full bg-gray-700 rounded px-3 py-2 text-white"
+                                    step="0.00001"
+                                />
                             </div>
-                        )}
 
-                        {/* Results */}
-                        {status.results && (
-                            <div className="bg-black/20 rounded-lg p-4 space-y-3">
-                                <h3 className="text-lg font-bold text-white">Training Results</h3>
+                            <div>
+                                <label className="block text-sm text-gray-400 mb-1">Gradient Accumulation</label>
+                                <input
+                                    type="number"
+                                    value={config.gradient_accumulation_steps}
+                                    onChange={(e) => setConfig({ ...config, gradient_accumulation_steps: parseInt(e.target.value) })}
+                                    className="w-full bg-gray-700 rounded px-3 py-2 text-white"
+                                    min="1"
+                                    max="64"
+                                />
+                                <span className="text-xs text-gray-500">16 = effective batch size 32</span>
+                            </div>
 
-                                {status.results.status === 'completed' ? (
-                                    <div className="space-y-2">
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="bg-purple-500/20 rounded-lg p-3">
-                                                <p className="text-purple-300 text-xs">Songs Processed</p>
-                                                <p className="text-2xl font-bold text-white">{status.results.songs_processed}</p>
-                                            </div>
-                                            <div className="bg-pink-500/20 rounded-lg p-3">
-                                                <p className="text-pink-300 text-xs">Genres Learned</p>
-                                                <p className="text-2xl font-bold text-white">{status.results.genres_learned}</p>
-                                            </div>
-                                        </div>
+                            <div>
+                                <label className="block text-sm text-gray-400 mb-1">Max Steps</label>
+                                <input
+                                    type="number"
+                                    value={config.max_steps}
+                                    onChange={(e) => setConfig({ ...config, max_steps: parseInt(e.target.value) })}
+                                    className="w-full bg-gray-700 rounded px-3 py-2 text-white"
+                                    step="1000"
+                                />
+                            </div>
 
-                                        {status.results.genre_profiles && (
-                                            <div className="mt-4">
-                                                <p className="text-purple-300 text-sm mb-2">Learned Genres:</p>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {status.results.genre_profiles.map((genre: string) => (
-                                                        <span
-                                                            key={genre}
-                                                            className="px-3 py-1 bg-gradient-to-r from-purple-600/50 to-pink-600/50 rounded-full text-white text-sm"
-                                                        >
-                                                            {genre}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
+                            <div>
+                                <label className="block text-sm text-gray-400 mb-1">Mixed Precision</label>
+                                <select
+                                    value={config.mixed_precision}
+                                    onChange={(e) => setConfig({ ...config, mixed_precision: e.target.value })}
+                                    className="w-full bg-gray-700 rounded px-3 py-2 text-white"
+                                >
+                                    <option value="fp16">FP16 (Recommended)</option>
+                                    <option value="bf16">BF16 (RTX 30/40 series)</option>
+                                    <option value="no">FP32 (Slow)</option>
+                                </select>
+                            </div>
+                        </div>
 
-                                        <div className="mt-4 text-sm text-purple-300">
-                                            <p>Model saved to: <code className="text-pink-400">{status.results.model_path}</code></p>
-                                        </div>
+                        <div className="mt-6 flex gap-3">
+                            <button
+                                onClick={startTraining}
+                                disabled={trainingStatus?.is_running}
+                                className={`px-6 py-3 rounded-lg font-medium transition-all ${trainingStatus?.is_running
+                                        ? 'bg-gray-600 cursor-not-allowed'
+                                        : 'bg-green-600 hover:bg-green-700'
+                                    }`}
+                            >
+                                ▶️ Bắt đầu Training
+                            </button>
+
+                            <button
+                                onClick={stopTraining}
+                                disabled={!trainingStatus?.is_running}
+                                className={`px-6 py-3 rounded-lg font-medium transition-all ${!trainingStatus?.is_running
+                                        ? 'bg-gray-600 cursor-not-allowed'
+                                        : 'bg-red-600 hover:bg-red-700'
+                                    }`}
+                            >
+                                ⏹️ Dừng Training
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Hardware Requirements */}
+                    <div className="bg-gray-800 rounded-lg p-5">
+                        <h3 className="text-lg font-semibold mb-4">💻 Yêu cầu phần cứng</h3>
+                        <div className="grid grid-cols-3 gap-4 text-sm">
+                            <div className="bg-gray-700 rounded p-3">
+                                <div className="text-gray-400">GPU VRAM</div>
+                                <div className="text-xl font-bold text-green-400">8GB+</div>
+                                <div className="text-gray-500">RTX 4070</div>
+                            </div>
+                            <div className="bg-gray-700 rounded p-3">
+                                <div className="text-gray-400">RAM</div>
+                                <div className="text-xl font-bold text-blue-400">32GB+</div>
+                                <div className="text-gray-500">System Memory</div>
+                            </div>
+                            <div className="bg-gray-700 rounded p-3">
+                                <div className="text-gray-400">Thời gian</div>
+                                <div className="text-xl font-bold text-yellow-400">7-14 ngày</div>
+                                <div className="text-gray-500">24/7 training</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'monitor' && (
+                <div className="space-y-6">
+                    {trainingStatus ? (
+                        <>
+                            {/* Training Progress */}
+                            <div className="bg-gray-800 rounded-lg p-5">
+                                <h3 className="text-lg font-semibold mb-4">
+                                    Training Progress
+                                    {trainingStatus.is_running && (
+                                        <span className="ml-2 text-green-400 animate-pulse">● Running</span>
+                                    )}
+                                </h3>
+
+                                {/* Progress Bar */}
+                                <div className="mb-4">
+                                    <div className="flex justify-between text-sm text-gray-400 mb-1">
+                                        <span>Step {trainingStatus.current_step.toLocaleString()} / {trainingStatus.total_steps.toLocaleString()}</span>
+                                        <span>{((trainingStatus.current_step / trainingStatus.total_steps) * 100).toFixed(1)}%</span>
                                     </div>
-                                ) : (
-                                    <div className="text-red-400">
-                                        <p>Training failed: {status.results.error}</p>
+                                    <div className="bg-gray-700 rounded-full h-3 overflow-hidden">
+                                        <div
+                                            className="bg-gradient-to-r from-purple-500 to-pink-500 h-full transition-all"
+                                            style={{ width: `${(trainingStatus.current_step / trainingStatus.total_steps) * 100}%` }}
+                                        />
                                     </div>
-                                )}
-                            </div>
-                        )}
-                    </motion.div>
-                )}
-            </AnimatePresence>
+                                </div>
 
-            {/* Instructions */}
-            <div className="mt-6 p-4 bg-black/20 rounded-lg">
-                <h3 className="text-white font-bold mb-2">📋 How to Train</h3>
-                <ol className="text-purple-200 text-sm space-y-1 list-decimal list-inside">
-                    <li>Organize your music by genre in folders (e.g., Music/EDM/, Music/HipHop/)</li>
-                    <li>Enter the root path to your music library</li>
-                    <li>Click "Start Training" to begin</li>
-                    <li>Wait for training to complete</li>
-                    <li>The AI will learn genre styles automatically!</li>
-                </ol>
-                <p className="text-purple-400 text-xs mt-3">
-                    💡 Recommended: 100+ songs per genre for best results
-                </p>
-            </div>
+                                {/* Metrics Grid */}
+                                <div className="grid grid-cols-4 gap-4">
+                                    <div className="bg-gray-700 rounded p-3 text-center">
+                                        <div className="text-gray-400 text-sm">Loss</div>
+                                        <div className="text-xl font-bold text-red-400">{trainingStatus.loss.toFixed(4)}</div>
+                                    </div>
+                                    <div className="bg-gray-700 rounded p-3 text-center">
+                                        <div className="text-gray-400 text-sm">LR</div>
+                                        <div className="text-xl font-bold text-blue-400">{trainingStatus.learning_rate.toExponential(2)}</div>
+                                    </div>
+                                    <div className="bg-gray-700 rounded p-3 text-center">
+                                        <div className="text-gray-400 text-sm">GPU Memory</div>
+                                        <div className="text-xl font-bold text-yellow-400">{trainingStatus.gpu_memory_gb.toFixed(1)} GB</div>
+                                    </div>
+                                    <div className="bg-gray-700 rounded p-3 text-center">
+                                        <div className="text-gray-400 text-sm">ETA</div>
+                                        <div className="text-xl font-bold text-green-400">{trainingStatus.eta_hours.toFixed(1)}h</div>
+                                    </div>
+                                </div>
+
+                                {/* Status Message */}
+                                <div className="mt-4 bg-gray-700 rounded p-3">
+                                    <span className="text-gray-400">Status:</span>
+                                    <span className="ml-2 text-white">{trainingStatus.status_message}</span>
+                                </div>
+                            </div>
+
+                            {/* TensorBoard Link */}
+                            <div className="bg-gray-800 rounded-lg p-5">
+                                <h3 className="text-lg font-semibold mb-4">📊 TensorBoard</h3>
+                                <p className="text-gray-400 mb-3">
+                                    Xem loss curve chi tiết và metrics khác trên TensorBoard:
+                                </p>
+                                <code className="block bg-gray-700 rounded p-3 text-green-400">
+                                    tensorboard --logdir checkpoints/logs/
+                                </code>
+                                <a
+                                    href="http://localhost:6006"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-block mt-3 text-purple-400 hover:text-purple-300"
+                                >
+                                    → Mở http://localhost:6006
+                                </a>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="bg-gray-800 rounded-lg p-8 text-center">
+                            <div className="text-6xl mb-4">💤</div>
+                            <h3 className="text-xl font-semibold mb-2">Chưa có training nào chạy</h3>
+                            <p className="text-gray-400">
+                                Chuẩn bị data và bắt đầu training từ tab "Cấu hình Training"
+                            </p>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 };
+
+export default TrainingPanel;

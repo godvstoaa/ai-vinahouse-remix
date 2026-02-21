@@ -2,7 +2,7 @@
     "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
     "appId": "com.airemix.vinahouse",
     "productName": "AI Vinahouse Remix",
-    "copyright": "Copyright © 2026 AI Remix Studio",
+    "copyright": "Copyright (c) 2026 AI Remix Studio",
     "directories": {
         "output": "release",
         "buildResources": "build"
@@ -83,7 +83,7 @@
     },
     "publish": {
         "provider": "github",
-        "owner": "ai-remix-studio",
-        "repo": "vinahouse-remix"
+        "owner": "godvstoaa",
+        "repo": "ai-vinahouse-remix"
     }
 }
