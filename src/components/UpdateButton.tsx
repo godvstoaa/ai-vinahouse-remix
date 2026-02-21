@@ -22,6 +22,19 @@ interface UpdateError {
 declare global {
     interface Window {
         electronAPI?: {
+            // File selection
+            selectFile: () => Promise<any>;
+            selectFolder: () => Promise<any>;
+            getAppPath: () => Promise<string>;
+            getResourcesPath: () => Promise<string>;
+
+            // Platform info
+            platform: string;
+            isMac: boolean;
+            isWindows: boolean;
+            isLinux: boolean;
+
+            // Auto Update
             checkForUpdates: () => Promise<any>;
             downloadUpdate: () => Promise<any>;
             installUpdate: () => Promise<void>;
@@ -32,7 +45,6 @@ declare global {
             onUpdateDownloaded: (callback: (info: UpdateInfo) => void) => void;
             onUpdateError: (callback: (error: UpdateError) => void) => void;
             removeAllUpdateListeners: () => void;
-            isMac: boolean;
         };
     }
 }

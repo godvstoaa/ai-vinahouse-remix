@@ -2,7 +2,7 @@
  * TrainingPanel - UI để chạy training DiT model
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 
 interface TrainingStatus {
@@ -31,7 +31,7 @@ const TrainingPanel: React.FC = () => {
     const [dataPath, setDataPath] = useState('D:/Music/Vinahouse/');
     const [nonstopPath, setNonstopPath] = useState('D:/Music/Nonstop/');
     const [workers, setWorkers] = useState(4);
-    const [dataStatus, setDataStatus] = useState<DataStatus | null>(null);
+    const [dataStatus, _setDataStatus] = useState<DataStatus | null>(null);
 
     // Training state
     const [trainingStatus, setTrainingStatus] = useState<TrainingStatus | null>(null);
@@ -116,8 +116,8 @@ const TrainingPanel: React.FC = () => {
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id as any)}
                         className={`px-4 py-2 rounded-lg font-medium transition-all ${activeTab === tab.id
-                                ? 'bg-purple-600 text-white'
-                                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                            ? 'bg-purple-600 text-white'
+                            : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                             }`}
                     >
                         {tab.label}
@@ -293,8 +293,8 @@ const TrainingPanel: React.FC = () => {
                                 onClick={startTraining}
                                 disabled={trainingStatus?.is_running}
                                 className={`px-6 py-3 rounded-lg font-medium transition-all ${trainingStatus?.is_running
-                                        ? 'bg-gray-600 cursor-not-allowed'
-                                        : 'bg-green-600 hover:bg-green-700'
+                                    ? 'bg-gray-600 cursor-not-allowed'
+                                    : 'bg-green-600 hover:bg-green-700'
                                     }`}
                             >
                                 ▶️ Bắt đầu Training
@@ -304,8 +304,8 @@ const TrainingPanel: React.FC = () => {
                                 onClick={stopTraining}
                                 disabled={!trainingStatus?.is_running}
                                 className={`px-6 py-3 rounded-lg font-medium transition-all ${!trainingStatus?.is_running
-                                        ? 'bg-gray-600 cursor-not-allowed'
-                                        : 'bg-red-600 hover:bg-red-700'
+                                    ? 'bg-gray-600 cursor-not-allowed'
+                                    : 'bg-red-600 hover:bg-red-700'
                                     }`}
                             >
                                 ⏹️ Dừng Training

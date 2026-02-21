@@ -3,7 +3,7 @@
  * Nhúng và phát hiện watermark ở tần số siêu âm (18-20 kHz)
  */
 
-import React, { useState, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import axios from 'axios'
 import { motion, AnimatePresence } from 'framer-motion'
 import {

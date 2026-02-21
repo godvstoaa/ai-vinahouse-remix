@@ -54,8 +54,9 @@ const FastTrainingPanel: React.FC = () => {
     const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
     const [estimate, setEstimate] = useState<TrainingEstimate | null>(null);
 
-    // API Base URL
+    // API Base URLs
     const API_BASE = 'http://localhost:8002/api/training';
+    const FAST_TRAIN_API = 'http://localhost:8002/api/fast-train';
 
     // Methods info
     const methods = [
@@ -306,19 +307,20 @@ const FastTrainingPanel: React.FC = () => {
 
         const pollInterval = setInterval(async () => {
             try {
-                const response = await fetch(`${API_BASE}/status`);
+                const response = await fetch(`${FAST_TRAIN_API}/status`);
                 const data = await response.json();
 
-                if (data.is_running) {
-                    setCurrentStep(data.current_step || 0);
-                    setTotalSteps(data.total_steps || 100000);
+                if (data.is_training) {
+                    setCurrentEpoch(data.epoch || 0);
+                    setTotalSteps(data.total_epochs || epochs);
                     setCurrentLoss(data.loss || 0);
-                    setStatusMessage(data.status_message || '');
-                    setTrainingProgress((data.current_step / data.total_steps) * 100 || 0);
+                    setStatusMessage(`Training epoch ${data.epoch || 0}/${data.total_epochs || epochs}...`);
+                    setTrainingProgress(data.progress || 0);
                 } else {
                     setIsTraining(false);
-                    if (data.status_message?.includes('completed')) {
+                    if (data.progress === 100) {
                         alert('🎉 Huấn luyện hoàn thành!');
+                        setStatusMessage('Hoàn thành!');
                     }
                 }
             } catch (error) {
@@ -330,6 +332,11 @@ const FastTrainingPanel: React.FC = () => {
     }, [isTraining]);
 
     const startTraining = async () => {
+        if (!datasetPath) {
+            alert('Vui lòng nhập đường dẫn dataset!');
+            return;
+        }
+
         setIsTraining(true);
         setTrainingProgress(0);
         setCurrentEpoch(0);
@@ -337,17 +344,15 @@ const FastTrainingPanel: React.FC = () => {
         setStatusMessage('Đang kết nối server...');
 
         try {
-            const response = await fetch(`${API_BASE}/start`, {
+            const response = await fetch(`${FAST_TRAIN_API}/start`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     batch_size: batchSize,
                     learning_rate: parseFloat(learningRate),
-                    gradient_accumulation_steps: 16,
-                    max_steps: epochs * 1000,
-                    mixed_precision: 'fp16',
+                    epochs: epochs,
                     method: method,
-                    model_id: pretrainedModel,
+                    pretrained_model: pretrainedModel,
                     dataset_path: datasetPath,
                     lora_rank: loraRank,
                     lora_alpha: loraAlpha
@@ -367,35 +372,12 @@ const FastTrainingPanel: React.FC = () => {
             console.error('Training error:', error);
             setStatusMessage(`Lỗi: ${error.message}`);
             setIsTraining(false);
-
-            // Fallback: Simulate training for demo
-            simulateTraining();
         }
-    };
-
-    const simulateTraining = async () => {
-        setIsTraining(true);
-        setTrainingProgress(0);
-        setCurrentEpoch(0);
-        setStatusMessage('🎭 Chế độ demo - Backend không khả dụng');
-
-        for (let i = 0; i < epochs; i++) {
-            await new Promise(r => setTimeout(r, 500));
-            setCurrentEpoch(i + 1);
-            setTrainingProgress(((i + 1) / epochs) * 100);
-            setCurrentLoss(Math.random() * 0.5 + 0.1);
-            setCurrentStep((i + 1) * 1000);
-            setTotalSteps(epochs * 1000);
-            setStatusMessage(`Training epoch ${i + 1}/${epochs}`);
-        }
-
-        setIsTraining(false);
-        alert('🎉 Huấn luyện hoàn thành (Demo mode)!');
     };
 
     const stopTraining = async () => {
         try {
-            const response = await fetch(`${API_BASE}/stop`, {
+            const response = await fetch(`${FAST_TRAIN_API}/stop`, {
                 method: 'POST'
             });
 

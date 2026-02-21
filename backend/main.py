@@ -478,6 +478,98 @@ async def get_training_results():
 
 
 # =====================
+# FAST TRAINING API
+# =====================
+
+from services.fast_training import create_fast_trainer, get_available_models, TrainingConfig as FastTrainingConfig
+
+fast_training_status: Dict[str, Any] = {
+    "is_training": False,
+    "progress": 0,
+    "epoch": 0,
+    "total_epochs": 0,
+    "loss": 0.0,
+    "results": None
+}
+fast_trainer_instance = None
+
+
+class FastTrainingRequest(BaseModel):
+    method: str = "lora"
+    pretrained_model: str = "demucs_ht"
+    dataset_path: str = "./datasets/vinahouse"
+    output_path: str = "./checkpoints"
+    epochs: int = 10
+    batch_size: int = 4
+    learning_rate: float = 1e-4
+    lora_rank: int = 8
+    lora_alpha: float = 16.0
+
+
+@app.get("/api/fast-train/models")
+async def api_get_fast_train_models():
+    """Lấy danh sách models hỗ trợ Fast Training"""
+    return await get_available_models()
+
+
+@app.post("/api/fast-train/start")
+async def api_start_fast_training(request: FastTrainingRequest, background_tasks: BackgroundTasks):
+    global fast_trainer_instance, fast_training_status
+    
+    if fast_training_status["is_training"]:
+        raise HTTPException(status_code=400, detail="Fast Training already in progress")
+        
+    config_dict = request.dict()
+    fast_trainer_instance = create_fast_trainer(config_dict)
+    
+    fast_training_status.update({
+        "is_training": True,
+        "progress": 0,
+        "epoch": 0,
+        "total_epochs": request.epochs,
+        "loss": 0.0,
+        "results": None
+    })
+    
+    background_tasks.add_task(run_fast_training)
+    return {"message": "Fast Training started", "config": config_dict}
+
+
+async def run_fast_training():
+    global fast_trainer_instance, fast_training_status
+    try:
+        async def progress_callback(info):
+            fast_training_status["epoch"] = info["epoch"]
+            fast_training_status["total_epochs"] = info["total_epochs"]
+            fast_training_status["progress"] = info["progress"]
+            fast_training_status["loss"] = info["loss"]
+            
+        results = await fast_trainer_instance.train(progress_callback=progress_callback)
+        
+        fast_training_status["is_training"] = False
+        fast_training_status["progress"] = 100
+        fast_training_status["results"] = results
+    except Exception as e:
+        fast_training_status["is_training"] = False
+        fast_training_status["results"] = {"status": "failed", "error": str(e)}
+        print(f"Fast Training error: {e}")
+
+
+@app.get("/api/fast-train/status")
+async def api_get_fast_training_status():
+    return fast_training_status
+
+
+@app.post("/api/fast-train/stop")
+async def api_stop_fast_training():
+    global fast_trainer_instance, fast_training_status
+    if fast_trainer_instance:
+        fast_trainer_instance.stop_training()
+    fast_training_status["is_training"] = False
+    return {"message": "Fast Training stopped"}
+
+
+# =====================
 # WATERMARK API
 # =====================
 

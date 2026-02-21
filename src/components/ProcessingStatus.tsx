@@ -25,26 +25,7 @@ export const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
 }) => {
     if (!isProcessing && !error) return null;
 
-    const getStageIcon = (stage: string) => {
-        switch (stage?.toLowerCase()) {
-            case 'uploading':
-                return '📤';
-            case 'analyzing':
-                return '🔍';
-            case 'separating':
-            case 'separation':
-                return '🎚️';
-            case 'remixing':
-            case 'generating':
-                return '🎵';
-            case 'mastering':
-                return '🔊';
-            case 'saving':
-                return '💾';
-            default:
-                return '⏳';
-        }
-    };
+
 
     const getStageColor = (stage: string) => {
         switch (stage?.toLowerCase()) {
